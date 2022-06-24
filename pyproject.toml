@@ -31,6 +31,7 @@ cssselect = "^1.1.0"
 openpyxl = "^3.0.6"
 attrs = {version = "^20.3.0", extras = ["attrs"]}
 ipython = {version = "^7.19.0", extras = ["shell"]}
+influxdb-client = "^1.30.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.1"
