@@ -132,6 +132,8 @@ class Page:
     _cached_dependencies: typing.Dict[str, typing.Any] = {}
     fetch_time_secs = 0
     fetch_items = 0
+    fetch_failures = 0
+    fetch_skips = 0
 
     def _fetch_data(self, scraper: scrapelib.Scraper) -> None:
         """
@@ -159,6 +161,7 @@ class Page:
             try:
                 self.source = self.get_source_from_input()
             except NotImplementedError:
+                self.fetch_failures += 1
                 raise MissingSourceError(
                     f"{self.__class__.__name__} has no source or get_source_from_input"
                 )
@@ -185,9 +188,11 @@ class Page:
                     self.logger.debug(
                         f"response rejected, 0/{total_attempts} attempts remaining"
                     )
+                    self.fetch_failures += 1
                     raise RejectedResponse(total_attempts, response)
             except scrapelib.HTTPError as e:
                 self.process_error_response(e)
+                self.fetch_failures += 1
                 raise HandledError(e)
             else:
                 self.postprocess_response()
@@ -221,6 +226,7 @@ class Page:
             # that detail page (as there is no result)
             self.logger.info(f"SkipItem: {e}")
             self.fetch_time_secs += time.time() - fetch_start_time
+            self.fetch_skips += 1
             return
 
         # if we got back a generator, we need to process each result
