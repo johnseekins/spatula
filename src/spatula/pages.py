@@ -12,7 +12,7 @@ import lxml.html  # type: ignore
 from openpyxl import load_workbook  # type: ignore
 from . import config
 from .sources import Source, URL
-from .utils import _obj_to_dict
+from .utils import _obj_to_dict, write_influx_stats
 
 
 def _to_scout_result(result: typing.Any) -> typing.Dict[str, typing.Any]:
@@ -134,6 +134,23 @@ class Page:
     fetch_items = 0
     fetch_failures = 0
     fetch_skips = 0
+
+    def write_stats(self, tags: dict) -> None:
+        metric_prefix = "spatula_scrape"
+        metrics = [
+            {
+                "metric": metric_prefix,
+                "tags": tags,
+                "fields": {
+                    "fetch_time_secs": self.fetch_time_secs,
+                    "fetch_items": self.fetch_items,
+                    "fetch_failures": self.fetch_failures,
+                    "fetch_skips": self.fetch_skips,
+                    "last_run_time_secs": int(time.time()),
+                },
+            }
+        ]
+        write_influx_stats(metrics)
 
     def _fetch_data(self, scraper: scrapelib.Scraper) -> None:
         """

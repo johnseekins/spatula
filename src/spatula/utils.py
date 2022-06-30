@@ -65,8 +65,12 @@ def _obj_to_dict(obj: typing.Any) -> typing.Optional[typing.Dict]:
         raise ValueError(f"invalid type: {obj} ({type(obj)})")
 
 
-def write_stats(
-    metrics: list, prefix: typing.Optional[str] = "", org: typing.Optional[str] = ""
+def write_influx_stats(
+    metrics: list,
+    prefix: typing.Optional[str] = "",
+    org: typing.Optional[str] = "",
+    url: typing.Optional[str] = "",
+    token: typing.Optional[str] = "",
 ) -> None:
     """
     A metric is a list of objects that look like:
@@ -89,6 +93,16 @@ def write_stats(
     votes_failed{jurisdiction="ca"} == 2
     votes_collected{jurisdiction="ca"} == 15
     """
+    if not url:
+        try:
+            url = os.environ.get("INFLUX_ENDPOINT")
+        except Exception:
+            raise ValueError("Missing configuration for stats output INFLUX_ENDPOINT")
+    if not token:
+        try:
+            url = os.environ.get("INFLUX_TOKEN")
+        except Exception:
+            raise ValueError("Missing configuration for stats output INFLUX_TOKEN")
     ts = time.time()
     points = list()
     for m in metrics:
@@ -104,8 +118,8 @@ def write_stats(
         points.append(p)
     try:
         client = InfluxDBClient(
-            url=os.environ.get("INFLUX_ENDPOINT"),
-            token=os.environ.get("INFLUX_TOKEN"),
+            url=url,
+            token=token,
             org=org,
             enable_gzip=True,
         )
