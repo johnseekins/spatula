@@ -130,6 +130,8 @@ class Page:
     source: typing.Union[None, str, Source] = None
     dependencies: typing.Dict[str, "Page"] = {}
     _cached_dependencies: typing.Dict[str, typing.Any] = {}
+    fetch_time_secs = 0
+    fetch_items = 0
 
     def _fetch_data(self, scraper: scrapelib.Scraper) -> None:
         """
@@ -203,12 +205,14 @@ class Page:
     def _to_items(
         self, scraper: scrapelib.Scraper, *, scout: bool = False
     ) -> typing.Iterable[typing.Any]:
+        fetch_start_time = time.time()
         # fetch data for a page, and then call the process_page entrypoint
         try:
             self._fetch_data(scraper)
         except HandledError:
             # ok to proceed, but nothing left to do with this page
             yield from self._paginate(scraper, scout)
+            self.fetch_time_secs += time.time() - fetch_start_time
             return
         try:
             result = self.process_page()
@@ -216,6 +220,7 @@ class Page:
             # a detail page can raise SkipItem, which means no further processing of
             # that detail page (as there is no result)
             self.logger.info(f"SkipItem: {e}")
+            self.fetch_time_secs += time.time() - fetch_start_time
             return
 
         # if we got back a generator, we need to process each result
@@ -223,22 +228,29 @@ class Page:
             # each item yielded might be a Page or an end-result
             for item in result:
                 if scout:
+                    # _to_scout_result has no loop, so we can safely increment here
+                    self.fetch_items += 1
                     yield _to_scout_result(item)
                 elif isinstance(item, Page):
                     yield from item._to_items(scraper)
                 else:
+                    self.fetch_items += 1
                     yield item
         elif scout:
-            yield _to_scout_result(result)
+            # _to_scout_result has no loop, so we can safely increment here
+            self.fetch_items += 1
+            yield self._to_scout_result(result)
         elif isinstance(result, Page):
             # single Page result, recurse deeper
             yield from result._to_items(scraper)
         else:
             # end-result, just return as-is
+            self.fetch_items += 1
             yield result
 
         # check for next page
         yield from self._paginate(scraper, scout)
+        self.fetch_time_secs += time.time() - fetch_start_time
 
     def __init__(
         self,
