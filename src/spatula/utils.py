@@ -4,6 +4,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS
 from influxdb_client.client.write.point import Point
 from influxdb_client.domain.write_precision import WritePrecision
 from lxml.etree import _Element  # type: ignore
+import logging
 import os
 import pprint
 import time
@@ -24,8 +25,7 @@ def _display_element(obj: _Element) -> str:
     elem_str = f"<{obj.tag} "
 
     # := if we drop 3.7
-    id_str = obj.get("id")
-    class_str = obj.get("class")
+    id_str = obj.get("id") class_str = obj.get("class")
 
     if id_str:
         elem_str += f"id='{id_str}'"
@@ -67,7 +67,6 @@ def _obj_to_dict(obj: typing.Any) -> typing.Optional[typing.Dict]:
 
 def write_influx_stats(
     metrics: list,
-    prefix: typing.Optional[str] = "",
     org: typing.Optional[str] = "",
     url: typing.Optional[str] = "",
     token: typing.Optional[str] = "",
@@ -100,13 +99,13 @@ def write_influx_stats(
             raise ValueError("Missing configuration for stats output INFLUX_ENDPOINT")
     if not token:
         try:
-            url = os.environ.get("INFLUX_TOKEN")
+            token = os.environ.get("INFLUX_TOKEN")
         except Exception:
             raise ValueError("Missing configuration for stats output INFLUX_TOKEN")
     ts = time.time()
     points = list()
     for m in metrics:
-        p = Point(f"{prefix}{m['metric']}")
+        p = Point(m['metric'])
         p.time(int(m.get("timestamp", ts)), WritePrecision.S)
         """
         use list comprehensions 'cause they're technically faster than for loops
@@ -125,5 +124,6 @@ def write_influx_stats(
         )
         write_api = client.write_api(write_options=SYNCHRONOUS)
         write_api.write("", record=points)
-    except Exception:
+    except Exception as e:
+        logging.warning(f"Failed to write stats: {e}")
         pass
