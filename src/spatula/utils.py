@@ -127,4 +127,3 @@ def write_influx_stats(
         write_api.write("", record=points)
     except Exception as e:
         logging.warning(f"Failed to write stats: {e}")
-        pass
