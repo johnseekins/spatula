@@ -135,8 +135,10 @@ class Page:
     fetch_failures = 0
     fetch_skips = 0
 
-    def write_stats(self, tags: dict) -> None:
+    def _write_stats(self, tags: dict) -> None:
         metric_prefix = "spatula_scrape"
+        if self.default_tags:
+            tags.append(self.default_tags)
         metrics = [
             {
                 "metric": metric_prefix,
@@ -310,6 +312,7 @@ class Page:
         if scraper is None:
             scraper = scrapelib.Scraper()
         yield from self._to_items(scraper)
+        self._write_stats()
 
     def get_source_from_input(self) -> typing.Union[None, str, Source]:
         """
