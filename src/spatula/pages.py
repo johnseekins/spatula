@@ -378,7 +378,8 @@ class HtmlPage(Page):
         Can use the normal lxml methods (such as `cssselect` and `getchildren`), or
         use this element as the target of a `Selector` subclass.
     """
-    self.default_tags = {"scraper_type": "htmlPage"}
+
+    default_tags = {"scraper_type": "htmlPage"}
 
     def postprocess_response(self) -> None:
         self.root = lxml.html.fromstring(self.response.content)
@@ -396,7 +397,8 @@ class XmlPage(Page):
     :   [`lxml.etree.Element`](https://lxml.de/api/lxml.etree._Element-class.html)
     object representing the root XML element on the page.
     """
-    self.default_tags = {"scraper_type": "xmlPage"}
+
+    default_tags = {"scraper_type": "xmlPage"}
 
     def postprocess_response(self) -> None:
         self.root = lxml.etree.fromstring(self.response.content)
@@ -411,7 +413,8 @@ class JsonPage(Page):
     `data`
     :   JSON data from response.  (same as `self.response.json()`)
     """
-    self.default_tags = {"scraper_type": "jsonPage"}
+
+    default_tags = {"scraper_type": "jsonPage"}
 
     def postprocess_response(self) -> None:
         self.data = self.response.json()
@@ -431,7 +434,8 @@ class PdfPage(Page):  # pragma: no cover
     `text`
     :   UTF8 text extracted by pdftotext.
     """
-    self.default_tags = {"scraper_type": "pdfPage"}
+
+    default_tags = {"scraper_type": "pdfPage"}
 
     preserve_layout = False
 
@@ -470,7 +474,8 @@ class ListPage(Page):
 
     **Methods**
     """
-    self.default_tags = {"scraper_type": "listPage"}
+
+    default_tags = {"scraper_type": "listPage"}
 
     def skip(self, msg: str = "") -> None:  # pragma: no cover
         warnings.warn(
@@ -510,7 +515,8 @@ class CsvListPage(ListPage):
     Processes each row in a CSV (after the first, assumed to be headers) as an item
     with `process_item`.
     """
-    self.default_tags = {"scraper_type": "csvListPage"}
+
+    default_tags = {"scraper_type": "csvListPage"}
 
     def postprocess_response(self) -> None:
         self.reader = csv.DictReader(io.StringIO(self.response.text))
@@ -523,7 +529,8 @@ class ExcelListPage(ListPage):  # pragma: no cover
     """
     Processes each row in an Excel file as an item with `process_item`.
     """
-    self.default_tags = {"scraper_type": "excelListPage"}
+
+    default_tags = {"scraper_type": "excelListPage"}
 
     def postprocess_response(self) -> None:
         workbook = load_workbook(io.BytesIO(self.response.content))
@@ -544,7 +551,8 @@ class LxmlListPage(ListPage):
     When overriding the class, instead of providing process_page, one must only provide
     a selector and a process_item function.
     """
-    self.default_tags = {"scraper_type": "xmlListPage"}
+
+    default_tags = {"scraper_type": "xmlListPage"}
 
     selector = None
 
@@ -564,7 +572,8 @@ class HtmlListPage(LxmlListPage, HtmlPage):
     `selector`
     :   `Selector` subclass which matches list of homogenous elements to process.  (e.g. `CSS("tbody tr")`)
     """
-    self.default_tags = {"scraper_type": "htmlListPage"}
+
+    default_tags = {"scraper_type": "htmlListPage"}
 
     pass
 
@@ -586,7 +595,8 @@ class JsonListPage(ListPage, JsonPage):
     """
     Processes each element in a JSON list as an item with `process_item`.
     """
-    self.default_tags = {"scraper_type": "jsonListPage"}
+
+    default_tags = {"scraper_type": "jsonListPage"}
 
     def process_page(self) -> typing.Iterable[typing.Any]:
         yield from self._process_or_skip_loop(self.data)

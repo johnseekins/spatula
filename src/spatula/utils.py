@@ -25,7 +25,8 @@ def _display_element(obj: _Element) -> str:
     elem_str = f"<{obj.tag} "
 
     # := if we drop 3.7
-    id_str = obj.get("id") class_str = obj.get("class")
+    id_str = obj.get("id")
+    class_str = obj.get("class")
 
     if id_str:
         elem_str += f"id='{id_str}'"
@@ -105,7 +106,7 @@ def write_influx_stats(
     ts = time.time()
     points = list()
     for m in metrics:
-        p = Point(m['metric'])
+        p = Point(m["metric"])
         p.time(int(m.get("timestamp", ts)), WritePrecision.S)
         """
         use list comprehensions 'cause they're technically faster than for loops
