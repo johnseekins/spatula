@@ -68,8 +68,9 @@ def _obj_to_dict(obj: typing.Any) -> typing.Optional[typing.Dict]:
 
 def write_influx_stats(
     metrics: list,
-    org: typing.Optional[str] = "",
     url: typing.Optional[str] = "",
+    org: typing.Optional[str] = "",
+    bucket: typing.Optional[str] = "",
     token: typing.Optional[str] = "",
 ) -> None:
     """
@@ -107,6 +108,7 @@ def write_influx_stats(
     points = list()
     for m in metrics:
         p = Point(m["metric"])
+        # try to grab a set timestamp, and fall back to current time otherwise
         p.time(int(m.get("timestamp", ts)), WritePrecision.S)
         """
         use list comprehensions 'cause they're technically faster than for loops
@@ -124,6 +126,6 @@ def write_influx_stats(
             enable_gzip=True,
         )
         write_api = client.write_api(write_options=SYNCHRONOUS)
-        write_api.write("", record=points)
+        write_api.write(bucket, record=points)
     except Exception as e:
         logging.warning(f"Failed to write stats: {e}")
