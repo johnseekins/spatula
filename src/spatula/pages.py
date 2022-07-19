@@ -197,7 +197,7 @@ class Page:
         try:
             self._stat_client.post(url, data=data)
         except Exception as e:
-            self.logger.warning(
+            self.logger.debug(
                 f"Failed to push scrape stats to {self.prometheus_endpoint} => {e}"
             )
 
