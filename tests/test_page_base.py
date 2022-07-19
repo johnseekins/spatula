@@ -302,4 +302,4 @@ def test_skip_item_on_detail_page(caplog):
     with caplog.at_level(logging.INFO):
         items = list(page.do_scrape())
     assert items == [2, 4]
-    assert len(caplog.records) == 12 # 6 null fetches, 3 skips, 3 stat write attempts
+    assert len(caplog.records) == 12  # 6 null fetches, 3 skips, 3 stat write attempts
