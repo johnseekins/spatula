@@ -137,7 +137,7 @@ class Page:
 
     # metrics for scraping
     metric_prefix = "spatula_scrape"
-    stats = {
+    stats: typing.Dict[str, typing.Any] = {
         "fetch_time_secs": {
             "value": 0,
             "description": "Time taken fetching objects",
