@@ -1,9 +1,6 @@
 import dataclasses
 from lxml.etree import _Element  # type: ignore
-import logging
-import os
 import pprint
-import time
 import typing
 
 # utilities for working with optional dependencies
