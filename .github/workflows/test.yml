@@ -40,5 +40,7 @@ jobs:
       run: poetry run mypy src
     - name: lint with flake8
       run: poetry run flake8 --show-source --statistics --ignore=E203,E501,W503 src
+    - name: lint with black
+      run: poetry run black --diff --check .
     - name: pytest
       run: poetry run pytest
