@@ -1,18 +1,21 @@
-import io
 import csv
-import time
-import tempfile
-import subprocess
+import io
 import logging
-import warnings
-import typing
-import requests
-import scrapelib
 import lxml.html  # type: ignore
 from openpyxl import load_workbook  # type: ignore
+from prometheus_client import CollectorRegistry, Gauge, push_to_gateway, Summary
+import requests
+import scrapelib
+import subprocess
+import tempfile
+import time
+import typing
+import warnings
+
+# local imports
 from . import config
 from .sources import Source, URL
-from .utils import _obj_to_dict, write_influx_stats
+from .utils import _obj_to_dict
 
 
 def _to_scout_result(result: typing.Any) -> typing.Dict[str, typing.Any]:
@@ -130,6 +133,10 @@ class Page:
     source: typing.Union[None, str, Source] = None
     dependencies: typing.Dict[str, "Page"] = {}
     _cached_dependencies: typing.Dict[str, typing.Any] = {}
+
+    # metrics for scraping
+    registry = CollectorRegistry()
+    metric_prefix = "spatula_scrape"
     fetch_time_secs = 0
     fetch_items = 0
     fetch_failures = 0
@@ -138,28 +145,52 @@ class Page:
 
     def _write_stats(self, tags: typing.Optional[dict] = {}) -> None:
         # write in defaults, but don't override any custom tags
-        if self.default_tags:
-            for k, v in self.default_tags:
-                if k not in tags:
-                    tags[k] = v
+        existing_tag_keys = tags.keys()
+        for k, v in self.default_tags.items():
+            if k not in existing_tag_keys and v is not tags[k]:
+                tags[k] = v
         if self.jurisdiction:
             tags["jurisdiction"] = self.jurisdiction
         if self.scraper_data:
             tags["scraper_data"] = self.scraper_data
-        metrics = [
-            {
-                "metric": "spatula_scrape",
-                "tags": tags,
-                "fields": {
-                    "fetch_time_secs": self.fetch_time_secs,
-                    "fetch_items": self.fetch_items,
-                    "fetch_failures": self.fetch_failures,
-                    "fetch_skips": self.fetch_skips,
-                    "last_run_time": int(time.time()),
-                },
-            }
-        ]
-        write_influx_stats(metrics)
+
+        fetch_time_secs = Summary(
+            f"{self.metric_prefix}_fetch_time_secs",
+            "Time taken fetching objects",
+            registry=self.registry,
+        )
+        fetch_items = Gauge(
+            f"{self.metric_prefix}_fetch_items",
+            "Number of items collected from page object",
+            registry=self.registry,
+        )
+        fetch_failures = Gauge(
+            f"{self.metric_prefix}_fetch_failures",
+            "Number of collection failures",
+            registry=self.registry,
+        )
+        fetch_skips = Gauge(
+            f"{self.metric_prefix}_fetch_skips",
+            "Number of items we intentionally skip",
+            registry=self.registry,
+        )
+        fetch_time = Gauge(
+            f"{self.metric_prefix}_fetch_time",
+            "Timestamp of last run",
+            registry=self.registry,
+        )
+        for k, v in tags.items():
+            fetch_time_secs.labels(k, v)
+            fetch_items.labels(k, v)
+            fetch_failures.labels(k, v)
+            fetch_skips.labels(k, v)
+            fetch_time.labels(k, v)
+        fetch_time_secs.set(self.fetch_time_secs)
+        fetch_items.set(self.fetch_items)
+        fetch_failures.set(self.fetch_failures)
+        fetch_skips.set(self.fetch_skips)
+        fetch_time.set_to_current_time()
+        push_to_gateway("", job="spatual_scrape", registry=self.registry)
 
     def _fetch_data(self, scraper: scrapelib.Scraper) -> None:
         """
