@@ -137,13 +137,15 @@ class Page:
     # metrics for scraping
     registry = CollectorRegistry()
     metric_prefix = "spatula_scrape"
-    fetch_time_secs = 0
-    fetch_items = 0
-    fetch_failures = 0
-    fetch_skips = 0
-    default_tags = {"scraper_type": "page"}
+    fetch_time_secs: float = 0
+    fetch_items: int = 0
+    fetch_failures: int = 0
+    fetch_skips: int = 0
+    default_tags: dict = {"scraper_type": "page"}
+    jurisdiction: str = ""
+    scraper_data: str = ""
 
-    def _write_stats(self, tags: typing.Optional[dict] = {}) -> None:
+    def _write_stats(self, tags: dict = {}) -> None:
         # write in defaults, but don't override any custom tags
         existing_tag_keys = tags.keys()
         for k, v in self.default_tags.items():
@@ -185,7 +187,7 @@ class Page:
             fetch_failures.labels(k, v)
             fetch_skips.labels(k, v)
             fetch_time.labels(k, v)
-        fetch_time_secs.set(self.fetch_time_secs)
+        fetch_time_secs.observe(self.fetch_time_secs)
         fetch_items.set(self.fetch_items)
         fetch_failures.set(self.fetch_failures)
         fetch_skips.set(self.fetch_skips)
@@ -302,7 +304,7 @@ class Page:
         elif scout:
             # _to_scout_result has no loop, so we can safely increment here
             self.fetch_items += 1
-            yield self._to_scout_result(result)
+            yield _to_scout_result(result)
         elif isinstance(result, Page):
             # single Page result, recurse deeper
             yield from result._to_items(scraper)
