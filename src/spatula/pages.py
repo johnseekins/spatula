@@ -1,9 +1,10 @@
+from copy import deepcopy
 import csv
 import io
 import logging
 import lxml.html  # type: ignore
 from openpyxl import load_workbook  # type: ignore
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway, Summary
+import os
 import requests
 import scrapelib
 import subprocess
@@ -135,64 +136,72 @@ class Page:
     _cached_dependencies: typing.Dict[str, typing.Any] = {}
 
     # metrics for scraping
-    registry = CollectorRegistry()
     metric_prefix = "spatula_scrape"
-    fetch_time_secs: float = 0
-    fetch_items: int = 0
-    fetch_failures: int = 0
-    fetch_skips: int = 0
+    stats = {
+        "fetch_time_secs": {
+            "value": 0,
+            "description": "Time taken fetching objects",
+            "type": "summary",
+        },
+        "fetch_items": {
+            "value": 0,
+            "description": "Number of items collected from page",
+            "type": "gauge",
+        },
+        "fetch_failures": {
+            "value": 0,
+            "description": "Number of collection failures",
+            "type": "gauge",
+        },
+        "fetch_skips": {
+            "value": 0,
+            "description": "Number of intentionally skipped items",
+            "type": "gauge",
+        },
+    }
     default_tags: dict = {"scraper_type": "page"}
     jurisdiction: str = ""
     scraper_data: str = ""
+    tags: dict = {}
 
-    def _write_stats(self, tags: dict = {}) -> None:
+    def _write_stats(
+        self, jurisdiction: str = "", scraper_data: str = "", metric_prefix: str = ""
+    ) -> None:
+        # copy custom tags in here first so we don't overwrite them for the object
+        tags: dict = deepcopy(self.tags)
         # write in defaults, but don't override any custom tags
-        existing_tag_keys = tags.keys()
         for k, v in self.default_tags.items():
-            if k not in existing_tag_keys and v is not tags[k]:
+            if k not in tags.keys():
                 tags[k] = v
         if self.jurisdiction:
             tags["jurisdiction"] = self.jurisdiction
         if self.scraper_data:
             tags["scraper_data"] = self.scraper_data
 
-        fetch_time_secs = Summary(
-            f"{self.metric_prefix}_fetch_time_secs",
-            "Time taken fetching objects",
-            registry=self.registry,
-        )
-        fetch_items = Gauge(
-            f"{self.metric_prefix}_fetch_items",
-            "Number of items collected from page object",
-            registry=self.registry,
-        )
-        fetch_failures = Gauge(
-            f"{self.metric_prefix}_fetch_failures",
-            "Number of collection failures",
-            registry=self.registry,
-        )
-        fetch_skips = Gauge(
-            f"{self.metric_prefix}_fetch_skips",
-            "Number of items we intentionally skip",
-            registry=self.registry,
-        )
-        fetch_time = Gauge(
-            f"{self.metric_prefix}_fetch_time",
-            "Timestamp of last run",
-            registry=self.registry,
-        )
+        path = ""
         for k, v in tags.items():
-            fetch_time_secs.labels(k, v)
-            fetch_items.labels(k, v)
-            fetch_failures.labels(k, v)
-            fetch_skips.labels(k, v)
-            fetch_time.labels(k, v)
-        fetch_time_secs.observe(self.fetch_time_secs)
-        fetch_items.set(self.fetch_items)
-        fetch_failures.set(self.fetch_failures)
-        fetch_skips.set(self.fetch_skips)
-        fetch_time.set_to_current_time()
-        push_to_gateway("", job="spatual_scrape", registry=self.registry)
+            path += f"/{k}/{v}"
+
+        data = ""
+        for k, metric in self.stats.items():
+            if metric_prefix:
+                k = f"{self.metric_prefix}_{k}"
+            data += f"# TYPE {k} {v['type']}\n"
+            data += f"# HELP {k} {v['description']}\n"
+            data += f"{k} {v['value']}\n"
+
+        # write metrics
+        headers = {
+            "Authorization": f"Bearer {self.prometheus_token}",
+            "Content-Type": "text/xml",
+        }
+        url = f"{self.prometheus_endpoint}/metrics/job/spatula_scrape{path}"
+        try:
+            requests.post(url, data=data, headers=headers)
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to push scrape stats to {self.prometheus_endpoint} => {e}"
+            )
 
     def _fetch_data(self, scraper: scrapelib.Scraper) -> None:
         """
@@ -220,7 +229,7 @@ class Page:
             try:
                 self.source = self.get_source_from_input()
             except NotImplementedError:
-                self.fetch_failures += 1
+                self.stats["fetch_failures"]["value"] += 1
                 raise MissingSourceError(
                     f"{self.__class__.__name__} has no source or get_source_from_input"
                 )
@@ -247,11 +256,11 @@ class Page:
                     self.logger.debug(
                         f"response rejected, 0/{total_attempts} attempts remaining"
                     )
-                    self.fetch_failures += 1
+                    self.stats["fetch_failures"]["value"] += 1
                     raise RejectedResponse(total_attempts, response)
             except scrapelib.HTTPError as e:
                 self.process_error_response(e)
-                self.fetch_failures += 1
+                self.stats["fetch_failures"]["value"] += 1
                 raise HandledError(e)
             else:
                 self.postprocess_response()
@@ -276,7 +285,7 @@ class Page:
         except HandledError:
             # ok to proceed, but nothing left to do with this page
             yield from self._paginate(scraper, scout)
-            self.fetch_time_secs += time.time() - fetch_start_time
+            self.stats["fetch_time_secs"]["value"] += time.time() - fetch_start_time
             return
         try:
             result = self.process_page()
@@ -284,8 +293,8 @@ class Page:
             # a detail page can raise SkipItem, which means no further processing of
             # that detail page (as there is no result)
             self.logger.info(f"SkipItem: {e}")
-            self.fetch_time_secs += time.time() - fetch_start_time
-            self.fetch_skips += 1
+            self.stats["fetch_time_secs"]["value"] += time.time() - fetch_start_time
+            self.stats["fetch_skips"]["value"] += 1
             return
 
         # if we got back a generator, we need to process each result
@@ -294,28 +303,28 @@ class Page:
             for item in result:
                 if scout:
                     # _to_scout_result has no loop, so we can safely increment here
-                    self.fetch_items += 1
+                    self.stats["fetch_items"]["value"] += 1
                     yield _to_scout_result(item)
                 elif isinstance(item, Page):
                     yield from item._to_items(scraper)
                 else:
-                    self.fetch_items += 1
+                    self.stats["fetch_items"]["value"] += 1
                     yield item
         elif scout:
             # _to_scout_result has no loop, so we can safely increment here
-            self.fetch_items += 1
+            self.stats["fetch_items"]["value"] += 1
             yield _to_scout_result(result)
         elif isinstance(result, Page):
             # single Page result, recurse deeper
             yield from result._to_items(scraper)
         else:
             # end-result, just return as-is
-            self.fetch_items += 1
+            self.stats["fetch_items"]["value"] += 1
             yield result
 
         # check for next page
         yield from self._paginate(scraper, scout)
-        self.fetch_time_secs += time.time() - fetch_start_time
+        self.stats["fetch_time_secs"]["value"] += time.time() - fetch_start_time
 
     def __init__(
         self,
@@ -330,6 +339,15 @@ class Page:
         self.logger = logging.getLogger(
             self.__class__.__module__ + "." + self.__class__.__name__
         )
+        try:
+            self.prometheus_endpoint = os.environ["PROMETHEUS_ENDPOINT"]
+        except Exception:
+            # default pushgateway port
+            self.prometheus_endpoint = "http://localhost:9091"
+        try:
+            self.prometheus_token = os.environ["PROMETHEUS_TOKEN"]
+        except Exception:
+            self.prometheus_token = "testing"
 
     def __str__(self) -> str:
         s = f"{self.__class__.__name__}("
