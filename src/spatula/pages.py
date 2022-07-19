@@ -6,6 +6,8 @@ import lxml.html  # type: ignore
 from openpyxl import load_workbook  # type: ignore
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 import scrapelib
 import subprocess
 import tempfile
@@ -184,20 +186,16 @@ class Page:
 
         data = ""
         for k, metric in self.stats.items():
-            if metric_prefix:
+            if self.metric_prefix:
                 k = f"{self.metric_prefix}_{k}"
-            data += f"# TYPE {k} {v['type']}\n"
-            data += f"# HELP {k} {v['description']}\n"
-            data += f"{k} {v['value']}\n"
+            data += f"# TYPE {k} {metric['type']}\n"
+            data += f"# HELP {k} {metric['description']}\n"
+            data += f"{k} {metric['value']}\n"
 
         # write metrics
-        headers = {
-            "Authorization": f"Bearer {self.prometheus_token}",
-            "Content-Type": "text/xml",
-        }
         url = f"{self.prometheus_endpoint}/metrics/job/spatula_scrape{path}"
         try:
-            requests.post(url, data=data, headers=headers)
+            self._stat_client.post(url, data=data)
         except Exception as e:
             self.logger.warning(
                 f"Failed to push scrape stats to {self.prometheus_endpoint} => {e}"
@@ -345,9 +343,27 @@ class Page:
             # default pushgateway port
             self.prometheus_endpoint = "http://localhost:9091"
         try:
-            self.prometheus_token = os.environ["PROMETHEUS_TOKEN"]
+            prometheus_token = os.environ["PROMETHEUS_TOKEN"]
         except Exception:
-            self.prometheus_token = "testing"
+            prometheus_token = "testing"
+
+        headers = {
+            "Authorization": f"Bearer {prometheus_token}",
+            "Content-Type": "text/xml",
+        }
+        retry = Retry(
+            total=3,
+            read=3,
+            connect=3,
+            backoff_factor=0.3,
+            status_forcelist=(500, 502, 503, 504, 429, 104),
+            method_whitelist=["POST"],
+        )
+        self._stat_client = requests.Session()
+        adapter = HTTPAdapter(max_retries=retry)
+        self._stat_client.mount("https://", adapter)
+        self._stat_client.mount("http://", adapter)
+        self._stat_client.headers.update(headers)
 
     def __str__(self) -> str:
         s = f"{self.__class__.__name__}("
