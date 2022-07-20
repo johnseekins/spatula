@@ -162,23 +162,22 @@ class Page:
         },
     }
     default_tags: dict = {"scraper_type": "page"}
-    jurisdiction: str = ""
-    scraper_data: str = ""
     tags: dict = {}
 
     def _write_stats(
         self, jurisdiction: str = "", scraper_data: str = "", metric_prefix: str = ""
     ) -> None:
+        self.stats["last_run_time"] = {
+            "value": time.time(),
+            "description": "Timestamp of last execution",
+            "type": "gauge",
+        }
         # copy custom tags in here first so we don't overwrite them for the object
         tags: dict = deepcopy(self.tags)
         # write in defaults, but don't override any custom tags
         for k, v in self.default_tags.items():
             if k not in tags.keys():
                 tags[k] = v
-        if self.jurisdiction:
-            tags["jurisdiction"] = self.jurisdiction
-        if self.scraper_data:
-            tags["scraper_data"] = self.scraper_data
 
         path = ""
         for k, v in tags.items():
@@ -572,7 +571,7 @@ class ListPage(Page):
         If [`SkipItem`](#SkipItem) is raised, `process_item` will continue to be called with
         the next item in the stream.
         """
-        warnings.warn(f"process_item not overridden on {self.__class__.__name__}")
+        # warnings.warn(f"process_item not overridden on {self.__class__.__name__}")
         return item
 
 
@@ -589,6 +588,7 @@ class CsvListPage(ListPage):
 
     def process_page(self) -> typing.Iterable[typing.Any]:
         yield from self._process_or_skip_loop(self.reader)
+
 
 
 class ExcelListPage(ListPage):  # pragma: no cover
