@@ -590,7 +590,6 @@ class CsvListPage(ListPage):
         yield from self._process_or_skip_loop(self.reader)
 
 
-
 class ExcelListPage(ListPage):  # pragma: no cover
     """
     Processes each row in an Excel file as an item with `process_item`.
